@@ -122,6 +122,33 @@ const MENU_ITEMS: MenuItem[] = [
     category: 'Drinks',
     tags: ['Alcoholic'],
   },
+  {
+    id: '12',
+    name: 'Classic Lemon Cheesecake',
+    description: 'New York style cheesecake with a graham cracker crust and mixed berry compote.',
+    price: 11.00,
+    image: 'https://images.unsplash.com/photo-1524351199678-961d65a8dfde?auto=format&fit=crop&q=80&w=800',
+    category: 'Desserts',
+    tags: ['Vegetarian'],
+  },
+  {
+    id: '13',
+    name: 'Local Craft IPA',
+    description: 'A hazy, cold-fermented IPA from the closest local brewery.',
+    price: 8.00,
+    image: 'https://images.unsplash.com/photo-1532635241-17e820acc59f?auto=format&fit=crop&q=80&w=800',
+    category: 'Drinks',
+    tags: ['Alcoholic'],
+  },
+  {
+    id: '14',
+    name: 'Lavender Lemonade',
+    description: 'Fresh squeezed lemons, lavender, and a hint of organic honey.',
+    price: 6.00,
+    image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&q=80&w=800',
+    category: 'Drinks',
+    tags: [],
+  },
 ];
 
 const CATEGORIES = ['Starters', 'Mains', 'Desserts', 'Drinks'];
@@ -130,14 +157,31 @@ const TIPS = [0.10, 0.15, 0.20];
 export default function App() {
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('menucraft_cart');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to parse cart JSON');
+    }
+    return [];
+  });
+  
   const [isCartOpen, setIsCartOpen] = useState(false);
   
   // Checkout State
+  const [customerPhone, setCustomerPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [tipPercentage, setTipPercentage] = useState(TIPS[1]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutStep, setCheckoutStep] = useState('');
   const [isCheckoutSuccess, setIsCheckoutSuccess] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('menucraft_cart', JSON.stringify(cart));
+  }, [cart]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -175,18 +219,6 @@ export default function App() {
     });
   };
 
-  const handleCheckout = () => {
-    setIsCheckoutSuccess(true);
-    setTimeout(() => {
-      setCart([]);
-      setIsCartOpen(false);
-      setIsCheckoutSuccess(false);
-      setOrderNotes('');
-      setTipPercentage(TIPS[1]);
-      toast.success('Order placed successfully!');
-    }, 2500);
-  };
-
   const cartSubtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [cart]
@@ -195,6 +227,57 @@ export default function App() {
   const cartTax = cartSubtotal * 0.08;
   const cartTip = cartSubtotal * tipPercentage;
   const cartTotal = cartSubtotal + cartTax + cartTip;
+
+  const handleCheckout = async () => {
+    if (!customerPhone.trim()) {
+      toast.error('Please enter your phone number to proceed.');
+      return;
+    }
+    
+    // Pattern: Normalize local phone number by automatically adding +91 (country code) if omitted.
+    let formattedPhone = customerPhone.trim();
+    if (/^\d{10}$/.test(formattedPhone)) {
+      formattedPhone = '91' + formattedPhone;
+    } else {
+      formattedPhone = formattedPhone.replace('+', '');
+    }
+
+    setIsProcessing(true);
+    setCheckoutStep('Opening WhatsApp to message client...');
+
+    try {
+      // 1. Prepare Order Messages
+      const orderSummary = cart.map(item => `${item.quantity}x ${item.name}`).join('\\n');
+      const timeEstimate = Math.floor(Math.random() * 15) + 20; // 20-35 mins
+      
+      const clientMessage = `*Order Confirmed!* 🍔\\n\\nHi from MenuCraft! We've received your order and are preparing it right away.\\n\\n*Your Order:*\\n${orderSummary}\\n\\n*Total Paid:* $${cartTotal.toFixed(2)}\\n*Est. Ready Time:* ${timeEstimate} minutes\\n\\nThank you for choosing us! Reply to this message if you have any questions.`;
+
+      // 2. Open WhatsApp link dynamically targeted at the Customer's Phone number
+      // So the restaurant (you, clicking the button) sends the message TO the client via WhatsApp
+      window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(clientMessage)}`, '_blank');
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      setIsProcessing(false);
+      setIsCheckoutSuccess(true);
+      
+      setTimeout(() => {
+        setCart([]);
+        setIsCartOpen(false);
+        setIsCheckoutSuccess(false);
+        setOrderNotes('');
+        setCustomerPhone('');
+        setTipPercentage(TIPS[1]);
+        localStorage.removeItem('menucraft_cart');
+        toast.success('WhatsApp opened to confirm with client!');
+      }, 3000);
+
+    } catch (err) {
+      console.error('Failed to route messages:', err);
+      setIsProcessing(false);
+      toast.error('Something went wrong during message routing.');
+    }
+  };
 
   const cartItemCount = useMemo(
     () => cart.reduce((sum, item) => sum + item.quantity, 0),
@@ -227,13 +310,18 @@ export default function App() {
         
         {/* Dynamic Header */}
         <header className={`fixed top-0 left-0 right-0 z-30 transition-all duration-300 ${isScrolled ? 'bg-white/95 backdrop-blur-md shadow-sm py-4' : 'bg-transparent py-6'}`}>
-          <div className="max-w-7xl mx-auto px-6 md:px-12">
-            <h1 className={`text-3xl font-serif font-bold transition-colors ${isScrolled ? 'text-[#8C3A21]' : 'text-white drop-shadow-md'}`}>
-              MenuCraft
-            </h1>
-            <p className={`text-sm mt-1 transition-colors ${isScrolled ? 'text-[#6B5A4E]' : 'text-white/90 drop-shadow-md'}`}>
-              Artisan Kitchen & Bar
-            </p>
+          <div className="max-w-7xl mx-auto px-6 md:px-12 flex justify-between items-center">
+            <div>
+              <h1 className={`text-3xl font-serif font-bold transition-colors ${isScrolled ? 'text-[#8C3A21]' : 'text-white drop-shadow-md'}`}>
+                MenuCraft
+              </h1>
+              <p className={`text-sm mt-1 transition-colors ${isScrolled ? 'text-[#6B5A4E]' : 'text-white/90 drop-shadow-md'}`}>
+                Artisan Kitchen & Bar
+              </p>
+            </div>
+            <div className={`px-3 py-1 text-xs font-semibold rounded-full border ${isScrolled ? 'border-[#8C3A21] text-[#8C3A21]' : 'border-white text-white drop-shadow-md bg-black/20'}`}>
+              Demo App
+            </div>
           </div>
         </header>
       </div>
@@ -400,6 +488,19 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {/* Developer Info Corner */}
+        <div className="mt-12 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 text-[#D4C5B9]">
+          <div className="text-sm text-center md:text-left">
+            <p className="font-semibold text-white mb-1">Built with passion by Vicky</p>
+            <p>I build automation tools, websites, and AI tools.</p>
+          </div>
+          <div className="flex flex-col items-center md:items-end text-sm space-y-1">
+            <a href="https://vickyiitp.tech" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">vickyiitp.tech</a>
+            <a href="mailto:vickyykumar14@gmail.com" className="hover:text-white transition-colors">vickyykumar14@gmail.com</a>
+            <a href="tel:8102099678" className="hover:text-white transition-colors">8102099678</a>
+          </div>
+        </div>
       </footer>
 
       {/* Floating Cart Button */}
@@ -445,8 +546,18 @@ export default function App() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="relative w-full md:w-[550px] bg-white rounded-t-3xl md:rounded-3xl flex flex-col max-h-[90vh] md:max-h-[85vh] overflow-hidden shadow-2xl"
             >
-              {isCheckoutSuccess ? (
-                <div className="p-10 flex flex-col items-center justify-center text-center h-96">
+              {isProcessing ? (
+                <div className="p-10 flex flex-col items-center justify-center text-center h-[500px]">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                    className="w-16 h-16 border-4 border-[#F5EFE6] border-t-[#8C3A21] rounded-full mb-6"
+                  />
+                  <h2 className="text-2xl font-serif font-bold text-[#3D2B1F] mb-3">Processing Order</h2>
+                  <p className="text-[#6B5A4E] text-lg max-w-[280px]">{checkoutStep}</p>
+                </div>
+              ) : isCheckoutSuccess ? (
+                <div className="p-10 flex flex-col items-center justify-center text-center h-[500px]">
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -455,8 +566,8 @@ export default function App() {
                   >
                     <CheckCircle2 size={40} />
                   </motion.div>
-                  <h2 className="text-3xl font-serif font-bold text-[#3D2B1F] mb-3">Order Received!</h2>
-                  <p className="text-[#6B5A4E] text-lg">Your food is being prepared. We'll notify you when it's ready.</p>
+                  <h2 className="text-3xl font-serif font-bold text-[#3D2B1F] mb-3">Order Confirmed!</h2>
+                  <p className="text-[#6B5A4E] text-lg">Your food is being prepared. We've sent a text to {customerPhone}.</p>
                 </div>
               ) : (
                 <>
@@ -519,6 +630,18 @@ export default function App() {
                           ))}
                         </div>
 
+                        {/* Customer Phone */}
+                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-[#E8E1D9]">
+                          <label className="block text-sm font-semibold text-[#3D2B1F] mb-2">Phone Number <span className="text-red-500">*</span></label>
+                          <input 
+                            type="tel"
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            placeholder="Enter your phone number"
+                            className="w-full bg-[#FDFBF7] border border-[#E8E1D9] rounded-xl p-3 text-sm outline-none focus:border-[#8C3A21] transition-colors"
+                          />
+                        </div>
+
                         {/* Order Notes */}
                         <div className="bg-white p-4 rounded-2xl shadow-sm border border-[#E8E1D9]">
                           <label className="block text-sm font-semibold text-[#3D2B1F] mb-2">Special Instructions</label>
@@ -573,7 +696,7 @@ export default function App() {
                       </div>
                     </div>
                     <button
-                      disabled={cart.length === 0}
+                      disabled={cart.length === 0 || !customerPhone.trim()}
                       onClick={handleCheckout}
                       className="w-full py-4 rounded-2xl bg-[#8C3A21] text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-transform shadow-lg shadow-[#8C3A21]/30"
                     >
